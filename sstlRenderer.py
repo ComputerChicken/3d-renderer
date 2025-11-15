@@ -1,4 +1,5 @@
-from math import cos, sin
+# Imports ¯\_( ͡° ͜ʖ ͡°)_/¯
+from math import cos, sin, sqrt
 import sys
 import random
  
@@ -19,11 +20,23 @@ def rot_point_origin(p, theta, axis):
     if axis == "z":
         return (p[0]*cos(theta)-p[1]*sin(theta),p[0]*sin(theta)+p[1]*cos(theta),p[2])
 
-def project_point(p, fov = 3, viewer_distance = 4):
-    factor = fov / (viewer_distance + p[2])
+vd = 4
+
+def project_point(p, fov = 3):
+    try:
+        factor = fov / (vd + p[2])
+    except ZeroDivisionError:
+        factor = 1
     x_proj = p[0] * factor
     y_proj = p[1] * factor
     return (x_proj, y_proj)
+
+def normalize(v):
+    v = np.array(v)
+    norm = np.linalg.norm(v)
+    if norm == 0:
+        return v
+    return v / norm
 
 shape = []
 
@@ -40,7 +53,7 @@ fps = 60
 fpsClock = pygame.time.Clock()
  
 width, height = 640, 480
-screen = pygame.display.set_mode((width, height))
+screen = pygame.display.set_mode((width, height), RESIZABLE)
 
 phi = 0
 psi = 0
@@ -50,7 +63,24 @@ randomFill = True
 
 scale = 100
 
+showPoints = True
+
 orthographic = False
+
+spinning = False
+
+bgColor = (0,0,0)
+
+fgColor = (255,255,255)
+
+def move(vector, s):
+    newShape = []
+    for face in s:
+        newFace = []
+        for point in face:
+            newFace.append((point[0]+vector[0],point[1]+vector[1],point[2]+vector[2]))
+        newShape.append(newFace)
+    return newShape
 
 def console():
     global fill
@@ -58,6 +88,10 @@ def console():
     global shape
     global scale
     global orthographic
+    global showPoints
+    global spinning
+    global bgColor
+    global fgColor
     while True:
         command = input("> ").split()
         if(command[0] == "set"):
@@ -69,9 +103,12 @@ def console():
                 randomFill = True
             elif(command[1] == "nf"):
                 fill = False
+            elif(command[1] == "pon"):
+                showPoints = True
+            elif(command[1] == "poff"):
+                showPoints = False
             elif(command[1] == "s"):
                 scale = int(command[2])
-                print(scale)
             elif(command[1] == "o"):
                 orthographic = True
             elif(command[1] == "p"):
@@ -79,7 +116,19 @@ def console():
             else:
                 print(f"Unkown parameter \"{command[1]}\"")
         elif(command[0] == "shape"):
-            shape = shapes[int(command[1])]
+            if(int(command[1]) < len(shapes)):
+                shape = shapes[int(command[1])]
+            else:
+                print("Not a valid shape")
+        elif(command[0] == "shape2"):
+            shape.extend(move((float(command[2]),float(command[3]),float(command[4])),shapes[int(command[1])]))
+        elif(command[0] == "spin"):
+            spinning = True
+        elif(command[0] == "nospin"):
+            spinning = False
+        elif(command[0] == "color"):
+            bgColor = [int(i) for i in command[1:4]]
+            fgColor = [int(i) for i in command[4:7]]
         else:
             print(f"Unknown commmand \"{command[0]}\"")
 
@@ -91,8 +140,10 @@ dragging = False
 
 # Game loop.
 while True:
-    camera = (0,0,scale)
-    screen.fill((0, 0, 0))
+    screen.fill(bgColor)
+    if(spinning):
+        phi += 0.02
+        psi += 0.02
 
     for event in pygame.event.get():
         if event.type == QUIT:
@@ -102,10 +153,15 @@ while True:
             dragging = True
         if event.type == MOUSEBUTTONUP:
             dragging = False
+        if event.type == MOUSEWHEEL:
+            vd += event.y
         if event.type == MOUSEMOTION:
             if(dragging):
                 phi = event.pos[0]/101
                 psi = event.pos[1]/101
+        elif event.type == pygame.VIDEORESIZE:
+                width, height = event.size
+                screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
 
     # Update.
     rotpoints = []
@@ -116,13 +172,28 @@ while True:
         rotpoints.append(rotface)
 
     # Draw.
-    for face in rotpoints:
-        for point in face:
-            if(not orthographic):
+    if fill:
+        rotpoints2d = []
+        for face in rotpoints:
+            face2d = []
+            for point in face:
                 projected = project_point(point)
+                face2d.append((projected[0]*scale+width/2, projected[1]*scale+height/2))
+            rotpoints2d.append(face2d)
+        for i, face in enumerate(rotpoints2d):
+            if(not randomFill):
+                pygame.draw.polygon(screen,fgColor,face)
             else:
-                projected = point
-            pygame.draw.circle(screen, (255,255,255), (projected[0]*scale+width/2,projected[1]*scale+height/2), 5)
+                pygame.draw.polygon(screen,(rands[i],rands[i],rands[i]),face)
+
+    if(showPoints):
+        for face in rotpoints:
+            for point in face:
+                if(not orthographic):
+                    projected = project_point(point)
+                else:
+                    projected = point
+                pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 5)
 
     for face in rotpoints:
         for p1 in face:
@@ -133,7 +204,7 @@ while True:
                 else:
                     pp1 = p1
                     pp2 = p2
-                pygame.draw.line(screen,(255,255,255), (pp1[0]*scale+width/2,pp1[1]*scale+height/2), (pp2[0]*scale+width/2,pp2[1]*scale+height/2))
+                pygame.draw.line(screen,fgColor, (pp1[0]*scale+width/2,pp1[1]*scale+height/2), (pp2[0]*scale+width/2,pp2[1]*scale+height/2))
 
     pygame.display.flip()
     fpsClock.tick(fps)
