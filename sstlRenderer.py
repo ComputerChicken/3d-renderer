@@ -1,5 +1,5 @@
 # Imports ¯\_( ͡° ͜ʖ ͡°)_/¯
-from math import cos, sin, sqrt, pi, nan, isnan, log, e
+from math import cos, sin, sqrt, pi, nan, isnan, log, e, tan
 import sys
 import random
  
@@ -190,7 +190,7 @@ def console():
                 print("Sets parameter")
                 print("Parameters:")
                 print("f - fills the shape with foreground color")
-                print("rf - fills each face with random grayscale color")
+                print("rf - fills each face with normal color")
                 print("nf - disables fill")
                 print("points - toggles points")
                 print("s - changes scale (deprecated)")
@@ -221,8 +221,6 @@ def console():
             print(f"Unknown commmand \"{command[0]}\"")
 
 _thread.start_new_thread(console, ())
-
-rands = [random.randint(0,255) for i in range(10000)]
 
 dragging = False
 
@@ -308,12 +306,6 @@ while True:
                     projected = point
                 face2d.append((projected[0]*scale+width/2, projected[1]*scale+height/2))
             rotpoints2d.append(face2d)
-
-        facesToDraw = []
-        for i, face in enumerate(rotpoints):
-            normal = normalize(np.cross(np.subtract(face[1],face[0]),np.subtract(face[2],face[0])))
-            if(np.dot((normal[0],normal[1],normal[2]),cameraPos) > 0):
-                facesToDraw.append(i)
         
         indexesByCloseness = {}
         for i, face in enumerate(rotpoints):
@@ -331,19 +323,20 @@ while True:
         for index in indexesByCloseness.keys():
             i = int(index)
             face = rotpoints2d[i]
+            face3d = shape[i]
             if (fill):
-                if(i in facesToDraw):
-                    if(not randomFill):
-                        pygame.draw.polygon(screen,fgColor,face)
-                    else:
-                        pygame.draw.polygon(screen,(rands[i],rands[i],rands[i]),face)
+                if(not randomFill):
+                    pygame.draw.polygon(screen,fgColor,face)
+                else:
+                    normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
+                    pygame.draw.polygon(screen,(abs(normal[0]*255),abs(normal[1]*255),abs(normal[2]*255)),face)
 
         for index in reversed(indexesByCloseness.keys()):
             i = int(index)
             face = rotpoints2d[i]
             if ((point_in_polygon((mouseX,mouseY),face)) and (not selected)):
                 pygame.draw.polygon(screen, (127,127,255), face)
-            if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown and (i in facesToDraw)):
+            if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown):
                 face3d = np.array(shapeUntranslated[i])
                 normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
                 faceCenter = face3d.mean(axis=0)
@@ -351,7 +344,7 @@ while True:
                 shapeUntranslated.extend(move((newPos[0],newPos[1],newPos[2]),shapes[tool]))
                 added = True
                 play_sound_async("click.mp3")
-            if(point_in_polygon((mouseX,mouseY),face) and (i in facesToDraw)):
+            if(point_in_polygon((mouseX,mouseY),face)):
                 selected = True
 
         if(showPoints):
@@ -381,14 +374,16 @@ while True:
                 newX = x/n-0.5
                 newZ = z/n-0.5
                 newFunc = func
+                newFunc = newFunc.replace("y","(sqrt(x**2+z**2))")
                 newFunc = newFunc.replace("x","("+str(newX)+")")
                 newFunc = newFunc.replace("z","("+str(newZ)+")")
                 try:
                     val = eval(newFunc)
-                except:
+                except Exception as exc:
                     val = nan
                 pointField.append((newX,val,newZ))
         rotpoints = []
+        pointFaces = []
         for i in range(len(pointField)):
             rotface = []
             try:
@@ -397,6 +392,7 @@ while True:
                     rotface.append(rot_point_origin(rot_point_origin(pointField[i+n], phi, "y"), psi, "x"))
                     rotface.append(rot_point_origin(rot_point_origin(pointField[i+n+1], phi, "y"), psi, "x"))
                     rotface.append(rot_point_origin(rot_point_origin(pointField[i+1], phi, "y"), psi, "x"))
+                    pointFaces.append([pointField[i],pointField[i+n],pointField[i+n+1],pointField[i+1]])
                     rotpoints.append(rotface)
             except IndexError:
                 pass
@@ -434,13 +430,16 @@ while True:
             i = int(index)
             face = rotpoints2d[i]
             face3d = rotpoints[i]
+            shapeFace = pointFaces[i]
             cont = False
             for point in face3d:
                 for value in point:
                     if isnan(value):
                         cont = True
             if cont: continue
-            pygame.draw.polygon(screen,(rands[i],rands[i],rands[i]), face)
+            normal = normalize(np.cross(np.subtract(shapeFace[1],shapeFace[0]),np.subtract(shapeFace[2],shapeFace[0])))
+
+            pygame.draw.polygon(screen,(abs(normal[0]*255),abs(normal[1]*255),abs(normal[2]*255)), face)
 
 
     pygame.display.flip()
