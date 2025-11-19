@@ -12,6 +12,7 @@ import _thread
 
 import os
 
+
 pygame.mixer.init()
 
 def play_sound_async(filename):
@@ -186,6 +187,7 @@ def console():
                 print("load - load .shps file")
                 print("spin - s p i n")
                 print("help - helps with a command or prints help menu (e.g. help <command> or help)")
+                print("pointfield - creates a point field with an equation")
             elif(command[1] == "set"):
                 print("Sets parameter")
                 print("Parameters:")
@@ -239,6 +241,7 @@ xStart, yStart, zStart = 0, 0, 0
 worldPos = [0, 0, 0]
 
 while True:
+    backspace = False
     shape = move(worldPos,shapeUntranslated)
     mouseDown = False
     screen.fill(bgColor)
@@ -288,6 +291,9 @@ while True:
         elif event.type == pygame.VIDEORESIZE:
                 width, height = event.size
                 screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+        if(event.type == KEYDOWN):
+            if(event.key == K_BACKSPACE):
+                backspace = True
     if(not pointFieldMode):
         rotpoints = []
         for face in shape:
@@ -342,6 +348,8 @@ while True:
             i = int(index)
             face = rotpoints2d[i]
             if ((point_in_polygon((mouseX,mouseY),face)) and (not selected)):
+                if(backspace):
+                    del shapeUntranslated[i]
                 pygame.draw.polygon(screen, (127,127,255), face)
             if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown and (i in facesToDraw)):
                 face3d = np.array(shapeUntranslated[i])
