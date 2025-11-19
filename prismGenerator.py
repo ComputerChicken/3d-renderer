@@ -12,7 +12,7 @@ shape.append(curFace)
 curFace = []
 for i in range(s):
     theta = 2*pi/s*i
-    curFace.append((cos(theta),sin(theta),-1))
+    curFace.append((cos(theta),-sin(theta),-1))
 shape.append(curFace)
 
 for i in range(s):
