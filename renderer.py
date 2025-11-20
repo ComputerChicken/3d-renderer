@@ -12,6 +12,10 @@ import _thread
 
 import os
 
+from stl import mesh
+
+from tkinter.filedialog import askopenfilename
+
 
 pygame.mixer.init()
 
@@ -50,7 +54,11 @@ def project_point(p, fov = 3):
         factor = 1
     x_proj = p[0] * factor
     y_proj = p[1] * factor
-    return (x_proj, y_proj)
+    if type(x_proj) == np.float32:
+        return (float(x_proj), float(y_proj))
+    else:
+        return (x_proj, y_proj)
+
 
 def normalize(v):
     v = np.array(v)
@@ -133,94 +141,114 @@ def console():
     global func
     global n
     while True:
-        command = input("> ").split()
-        if(command[0] == "set"):
-            if(command[1] == "f"):
-                fill = True
-                randomFill = False
-            elif(command[1] == "rf"):
-                fill = True
-                randomFill = True
-            elif(command[1] == "nf"):
-                fill = False
-            elif(command[1] == "points"):
-                showPoints = not showPoints
-            elif(command[1] == "s"):
-                scale = int(command[2])
-            elif(command[1] == "o"):
-                orthographic = True
-            elif(command[1] == "p"):
-                orthographic = False
-            elif(command[1] == "tool"):
-                tool = int(command[2])
-                toolDist = float(command[3])
+        try:
+            command = input("> ").split()
+            if(command[0] == "set"):
+                if(command[1] == "f"):
+                    fill = True
+                    randomFill = False
+                elif(command[1] == "rf"):
+                    fill = True
+                    randomFill = True
+                elif(command[1] == "nf"):
+                    fill = False
+                elif(command[1] == "points"):
+                    showPoints = not showPoints
+                elif(command[1] == "s"):
+                    scale = int(command[2])
+                elif(command[1] == "o"):
+                    orthographic = True
+                elif(command[1] == "p"):
+                    orthographic = False
+                elif(command[1] == "tool"):
+                    tool = int(command[2])
+                    toolDist = float(command[3])
+                else:
+                    print(f"Unkown parameter \"{command[1]}\"")
+            elif(command[0] == "shape"):
+                if(int(command[1]) < len(shapes)):
+                    shapeUntranslated.extend(move((float(command[2]),float(command[3]),float(command[4])),shapes[int(command[1])]))
+                else:
+                    print("Not a valid shape")
+            elif(command[0] == "spin"):
+                spinning = not spinning
+            elif(command[0] == "color"):
+                bgColor = [int(i) for i in command[1:4]]
+                fgColor = [int(i) for i in command[4:7]]
+            elif(command[0] == "save"):
+                with open(command[1] + ".shps", "w") as f:
+                    f.write(str(shapeUntranslated))
+            elif(command[0] == "load"):
+                with open(command[1] + ".shps", "r") as f:
+                    exec("shapeUntranslated = " + f.read(), {"np": np}, globals())
+            elif(command[0] == "pointfield"):
+                pointFieldMode = not pointFieldMode
+                if(pointFieldMode):
+                    func = command[1]
+                    n = int(command[2])
+            elif(command[0] == "help"):
+                if(len(command) == 1):
+                    print("Right click to rotate the scene, press backspace to delete a face, left click on a face to attached another shape to it")
+                    print("Commands:")
+                    print("set - sets a parameter")
+                    print("shape - creates a shape at given coordinates")
+                    print("color - sets background and foreground colors")
+                    print("save - saves shapes as .shps file")
+                    print("load - load .shps file")
+                    print("spin - s p i n")
+                    print("help - helps with a command or prints help menu (e.g. help <command> or help)")
+                    print("pointfield - creates a point field with an equation")
+                elif(command[1] == "set"):
+                    print("Sets parameter")
+                    print("Parameters:")
+                    print("f - fills the shape with foreground color")
+                    print("rf - fills each face with normal color")
+                    print("nf - disables fill")
+                    print("points - toggles points")
+                    print("s - changes scale (deprecated)")
+                    print("o - makes everything orthographic")
+                    print("p - makes everything have perspective (default)")
+                    print("tool - changes what shape places when clicking on a face, (e.g. set tool <shape> <normal-offset>)")
+                elif(command[1] == "shape"):
+                    print("Creates a shape at coordinates (e.g. shape <shape-index> <x> <y> <z>)")
+                    print("Shape indexes:")
+                    i = 0
+                    for file in os.listdir("./"):
+                        if file.endswith(".sstl"):
+                            print(str(i) + " - " + file)
+                            i += 1
+                elif(command[1] == "color"):
+                    print("Sets foreground and background color (e.g. color <bgr> <bgg> <bgb> <fgr> <fgg> <fgb>)")
+                elif(command[1] in ["save","load"]):
+                    print("Save and load files (obviously) (e.g. save <filename> or load <filename> filename should be without suffix)")
+                    print("Available files:")
+                    for file in os.listdir("./"):
+                        if file.endswith(".shps"):
+                            print(file)
+                elif(command[1] == "stl"):
+                    print("Load stl files")
+                elif(command[1] == "pointfield"):
+                    print("Create a point field with the given equation and number of points (e.g. pointfield <equation> <number of points in side>)")
+                else:
+                    print("Help not availible for specified command.")
+            elif(command[0] == "stl"):
+                path = askopenfilename()
+                shapeUntranslatedTemp = mesh.Mesh.from_file(path).vectors
+                shapeUntranslatedTemp /= 10
+                if("xyz" not in path):
+                    shapeUntranslatedTemp = shapeUntranslatedTemp[:, :, [0, 2, 1]]
+                else:
+                    shapeUntranslatedTemp = shapeUntranslatedTemp[:, :, [1,0,2]]
+                shapeUntranslatedTemp[:, :, 1] -= 1
+                shapeUntranslatedTemp = shapeUntranslatedTemp.tolist()
+
+                shapeUntranslatedTemp = move((float(command[1]), float(command[2]), float(command[3])), shapeUntranslatedTemp)
+
+                shapeUntranslated.extend(shapeUntranslatedTemp)
             else:
-                print(f"Unkown parameter \"{command[1]}\"")
-        elif(command[0] == "shape"):
-            if(int(command[1]) < len(shapes)):
-                shapeUntranslated.extend(move((float(command[2]),float(command[3]),float(command[4])),shapes[int(command[1])]))
-            else:
-                print("Not a valid shape")
-        elif(command[0] == "spin"):
-            spinning = not spinning
-        elif(command[0] == "color"):
-            bgColor = [int(i) for i in command[1:4]]
-            fgColor = [int(i) for i in command[4:7]]
-        elif(command[0] == "save"):
-            with open(command[1] + ".shps", "w") as f:
-                f.write(str(shapeUntranslated))
-        elif(command[0] == "load"):
-            with open(command[1] + ".shps", "r") as f:
-                exec("shapeUntranslated = " + f.read(), {"np": np}, globals())
-        elif(command[0] == "pointfield"):
-            pointFieldMode = not pointFieldMode
-            if(pointFieldMode):
-                func = command[1]
-                n = int(command[2])
-        elif(command[0] == "help"):
-            if(len(command) == 1):
-                print("Commands:")
-                print("set - sets a parameter")
-                print("shape - creates a shape at given coordinates")
-                print("color - sets background and foreground colors")
-                print("save - saves shapes as .shps file")
-                print("load - load .shps file")
-                print("spin - s p i n")
-                print("help - helps with a command or prints help menu (e.g. help <command> or help)")
-                print("pointfield - creates a point field with an equation")
-            elif(command[1] == "set"):
-                print("Sets parameter")
-                print("Parameters:")
-                print("f - fills the shape with foreground color")
-                print("rf - fills each face with normal color")
-                print("nf - disables fill")
-                print("points - toggles points")
-                print("s - changes scale (deprecated)")
-                print("o - makes everything orthographic")
-                print("p - makes everything have perspective (default)")
-                print("tool - changes what shape places when clicking on a face, (e.g. set tool <shape> <normal-offset>)")
-            elif(command[1] == "shape"):
-                print("Creates a shape at coordinates (e.g. shape <shape-index> <x> <y> <z>)")
-                print("Shape indexes:")
-                i = 0
-                for file in os.listdir("./"):
-                    if file.endswith(".sstl"):
-                        print(str(i) + " - " + file)
-                        i += 1
-            elif(command[1] == "color"):
-                print("Sets foreground and background color (e.g. color <bgr> <bgg> <bgb> <fgr> <fgg> <fgb>)")
-            elif(command[1] in ["save","load"]):
-                print("Save and load save and load files (obviously) (e.g. save <filename> or load <filename> filename should be without suffix)")
-                print("Available files:")
-                for file in os.listdir("./"):
-                    if file.endswith(".shps"):
-                        print(file)
-            elif(command[1] == "pointfield"):
-                print("Create a point field with the given equation and number of points (e.g. pointfield <equation> <number of points in side>)")
-            else:
-                print("Help not availible for specified command.")
-        else:
-            print(f"Unknown commmand \"{command[0]}\"")
+                print(f"Unknown commmand \"{command[0]}\"")
+        except IndexError:
+            print("Bad amount of parameters")
 
 _thread.start_new_thread(console, ())
 
@@ -343,7 +371,10 @@ while True:
             if ((point_in_polygon((mouseX,mouseY),face)) and (not selected)):
                 if(backspace):
                     del shapeUntranslated[i]
-                pygame.draw.polygon(screen, (127,127,255), face)
+                try:
+                    pygame.draw.polygon(screen, (127,127,255), face.tolist())
+                except AttributeError:
+                    pygame.draw.polygon(screen, (127,127,255), face)
             if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown):
                 face3d = np.array(shapeUntranslated[i])
                 normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
