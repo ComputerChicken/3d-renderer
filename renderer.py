@@ -14,8 +14,18 @@ import os
 
 from stl import mesh
 
-from tkinter.filedialog import askopenfilename
+import subprocess
 
+def open_file_dialog():
+    ps = r'''
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Filter = "STL Files (*.stl)|*.stl|All Files (*.*)|*.*"
+    $dialog.InitialDirectory = [Environment]::GetFolderPath("Desktop")
+    $dialog.ShowDialog() | Out-Null
+    $dialog.FileName
+    '''
+    return subprocess.check_output(["powershell", "-NoProfile", "-Command", ps], text=True).strip()
 
 pygame.mixer.init()
 
@@ -198,6 +208,7 @@ def console():
                     print("spin - s p i n")
                     print("help - helps with a command or prints help menu (e.g. help <command> or help)")
                     print("pointfield - creates a point field with an equation")
+                    print("stl - loads an stl file")
                 elif(command[1] == "set"):
                     print("Sets parameter")
                     print("Parameters:")
@@ -226,13 +237,13 @@ def console():
                         if file.endswith(".shps"):
                             print(file)
                 elif(command[1] == "stl"):
-                    print("Load stl files")
+                    print("Load stl files (e.g. stl <x> <y> <z>)")
                 elif(command[1] == "pointfield"):
                     print("Create a point field with the given equation and number of points (e.g. pointfield <equation> <number of points in side>)")
                 else:
                     print("Help not availible for specified command.")
             elif(command[0] == "stl"):
-                path = askopenfilename()
+                path = open_file_dialog()
                 shapeUntranslatedTemp = mesh.Mesh.from_file(path).vectors
                 shapeUntranslatedTemp /= 10
                 if("xyz" not in path):
@@ -393,7 +404,7 @@ while True:
                         projected = project_point(point)
                     else:
                         projected = point
-                    pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 5)
+                    pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 3)
 
         for face in rotpoints:
             for p1 in face:
