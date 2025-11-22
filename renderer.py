@@ -75,12 +75,12 @@ def project_point(p, fov = 5):
         factor = fov / (p[2])
     except ZeroDivisionError:
         factor = 1
-    x_proj = p[0] * factor
-    y_proj = p[1] * factor
-    if type(x_proj) == np.float32:
-        return (float(x_proj), float(y_proj))
+    xProj = p[0] * factor
+    yProj = p[1] * factor
+    if type(xProj) == np.float32:
+        return (float(xProj), float(yProj))
     else:
-        return (x_proj, y_proj)
+        return (xProj, yProj)
 
 
 def normalize(v):
@@ -102,8 +102,8 @@ pygame.init()
 fps = 60
 fpsClock = pygame.time.Clock()
 
-icon_image = pygame.image.load('icon.png')
-pygame.display.set_icon(icon_image)
+iconImage = pygame.image.load('icon.png')
+pygame.display.set_icon(iconImage)
 pygame.display.set_caption("3D Renderer")
 
 width, height = 640, 480
@@ -149,7 +149,7 @@ def move(vector, s):
         newShape.append(newFace)
     return newShape
 
-precomputed_normals = []
+precomputedNormals = []
 
 def console():
     global fill
@@ -167,7 +167,7 @@ def console():
     global func
     global n
     global modelScale
-    global precomputed_normals
+    global precomputedNormals
     while True:
         try:
             command = input("> ").split()
@@ -279,7 +279,7 @@ def console():
                 print(f"Unknown commmand \"{command[0]}\"")
         except IndexError:
             print("Bad amount of parameters")
-        precomputed_normals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
+        precomputedNormals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
 
 _thread.start_new_thread(console, ())
 
@@ -306,19 +306,25 @@ while True:
         np.cos(phi - np.pi/2),
     ])
 
+    up = np.array([0,1,0])
+
     if(keyboard.is_pressed("shift")):
-        move_speed = 0.5
+        moveSpeed = 0.5
     else:
-        move_speed = 0.2
+        moveSpeed = 0.2
 
     if keyboard.is_pressed("w"):
-        cameraPos += forward * move_speed
+        cameraPos += forward * moveSpeed
     if keyboard.is_pressed("s"):
-        cameraPos -= forward * move_speed
+        cameraPos -= forward * moveSpeed
     if keyboard.is_pressed("a"):
-        cameraPos -= right * move_speed
+        cameraPos -= right * moveSpeed
     if keyboard.is_pressed("d"):
-        cameraPos += right * move_speed
+        cameraPos += right * moveSpeed
+    if keyboard.is_pressed("space"):
+        cameraPos -= up * moveSpeed
+    if keyboard.is_pressed("ctrl"):
+        cameraPos += up * moveSpeed
 
     backspace = False
     mouseDown = False
@@ -362,31 +368,31 @@ while True:
             if(event.key == K_BACKSPACE):
                 backspace = True
 
-    shape_np = np.array(shape, dtype=float)
-    faces = shape_np.reshape(-1, 3)
+    shapenp = np.array(shape, dtype=float)
+    faces = shapenp.reshape(-1, 3)
 
     vectors = faces - cameraPos
 
     cy, sy = np.cos(phi), np.sin(phi)
     cx, sx = np.cos(-psi), np.sin(-psi)
 
-    R_y = np.array([
+    Ry = np.array([
         [ cy, 0, -sy],
         [  0, 1,   0],
         [ sy, 0,  cy]
     ])
 
-    R_x = np.array([
+    Rx = np.array([
         [1, 0,  0],
         [0, cx, -sx],
         [0, sx,  cx]
     ])
 
-    R = R_x @ R_y
+    R = Rx @ Ry
 
     rotated = (R @ vectors.T).T
 
-    rotpoints = rotated.reshape(shape_np.shape)
+    rotpoints = rotated.reshape(shapenp.shape)
     
     visibleFaces = []
 
@@ -429,7 +435,7 @@ while True:
         face3d = shape[i]
 
         try:
-            normal = precomputed_normals[i]
+            normal = precomputedNormals[i]
         except  IndexError:
             pass
 
@@ -452,13 +458,13 @@ while True:
                     pygame.draw.polygon(screen, (127,127,255), face)
             if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown):
                 face3d = np.array(shape[i])
-                normal = precomputed_normals[i]
+                normal = precomputedNormals[i]
                 faceCenter = face3d.mean(axis=0)
                 newPos = normal*toolDist + faceCenter
                 shape.extend(move((newPos[0],newPos[1],newPos[2]),shapes[tool]))
                 added = True
                 play_sound_async("click.mp3")
-                precomputed_normals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
+                precomputedNormals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
             if(point_in_polygon((mouseX,mouseY),face)):
                 selected = True
 
