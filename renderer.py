@@ -16,6 +16,19 @@ from stl import mesh
 
 import subprocess
 
+import keyboard
+
+shape = []
+
+
+def xyToCameraPlane(camPos, worldPos):
+    a, b, c = camPos[0], camPos[1], camPos[2]
+    x0, y0, z0 = worldPos[0], worldPos[1], worldPos[2]
+    x = x0-a*(a*x0+b*y0)/(a**2+b**2+c**2)
+    y= y0-b*(a*x0+b*y0)/(a**2+b**2+c**2)
+    z = -c*(a*x0+b*y0)/(a**2+b**2+c**2)
+    return [x,y,z]
+
 def open_file_dialog():
     ps = r'''
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -57,9 +70,9 @@ def rot_point_origin(p, theta, axis):
 
 vd = 4
 
-def project_point(p, fov = 3):
+def project_point(p, fov = 5):
     try:
-        factor = fov / (vd + p[2])
+        factor = fov / (p[2])
     except ZeroDivisionError:
         factor = 1
     x_proj = p[0] * factor
@@ -76,8 +89,6 @@ def normalize(v):
     if norm == 0:
         return v
     return v / norm
-
-shapeUntranslated = []
 
 shapes = []
 
@@ -126,6 +137,8 @@ func = ""
 
 n = 20
 
+cameraPos = [0,0,0]
+
 def move(vector, s):
     newShape = []
     for face in s:
@@ -138,7 +151,7 @@ def move(vector, s):
 def console():
     global fill
     global randomFill
-    global shapeUntranslated
+    global shape
     global scale
     global orthographic
     global showPoints
@@ -177,7 +190,7 @@ def console():
                     print(f"Unkown parameter \"{command[1]}\"")
             elif(command[0] == "shape"):
                 if(int(command[1]) < len(shapes)):
-                    shapeUntranslated.extend(move((float(command[2]),float(command[3]),float(command[4])),shapes[int(command[1])]))
+                    shape.extend(move((float(command[2]),float(command[3]),float(command[4])),shapes[int(command[1])]))
                 else:
                     print("Not a valid shape")
             elif(command[0] == "spin"):
@@ -187,10 +200,10 @@ def console():
                 fgColor = [int(i) for i in command[4:7]]
             elif(command[0] == "save"):
                 with open(command[1] + ".shps", "w") as f:
-                    f.write(str(shapeUntranslated))
+                    f.write(str(shape))
             elif(command[0] == "load"):
                 with open(command[1] + ".shps", "r") as f:
-                    exec("shapeUntranslated = " + f.read(), {"np": np}, globals())
+                    exec("shape = " + f.read(), {"np": np}, globals())
             elif(command[0] == "pointfield"):
                 pointFieldMode = not pointFieldMode
                 if(pointFieldMode):
@@ -198,7 +211,7 @@ def console():
                     n = int(command[2])
             elif(command[0] == "help"):
                 if(len(command) == 1):
-                    print("Right click to rotate the scene, press backspace to delete a face, left click on a face to attached another shape to it")
+                    print("Right click to rotate the camera, press backspace to delete a face, left click on a face to attached another shape to it, use WASD to move, hit shift to go fast")
                     print("Commands:")
                     print("set - sets a parameter")
                     print("shape - creates a shape at given coordinates")
@@ -238,24 +251,23 @@ def console():
                             print(file)
                 elif(command[1] == "stl"):
                     print("Load stl files (e.g. stl <x> <y> <z>)")
-                elif(command[1] == "pointfield"):
-                    print("Create a point field with the given equation and number of points (e.g. pointfield <equation> <number of points in side>)")
                 else:
                     print("Help not availible for specified command.")
             elif(command[0] == "stl"):
                 path = open_file_dialog()
-                shapeUntranslatedTemp = mesh.Mesh.from_file(path).vectors
-                shapeUntranslatedTemp /= 10
+                shapeTemp = mesh.Mesh.from_file(path).vectors
+                shapeTemp /= 10
                 if("xyz" not in path):
-                    shapeUntranslatedTemp = shapeUntranslatedTemp[:, :, [0, 2, 1]]
+                    shapeTemp = shapeTemp[:, :, [0, 2, 1]]
                 else:
-                    shapeUntranslatedTemp = shapeUntranslatedTemp[:, :, [1,0,2]]
-                shapeUntranslatedTemp[:, :, 1] -= 1
-                shapeUntranslatedTemp = shapeUntranslatedTemp.tolist()
+                    shapeTemp = shapeTemp[:, :, [1,0,2]]
+                shapeTemp[:, :, 1] -= 1
+                shapeTemp[:, :, 1] = -shapeTemp[:, :, 1]
+                shapeTemp = shapeTemp.tolist()
 
-                shapeUntranslatedTemp = move((float(command[1]), float(command[2]), float(command[3])), shapeUntranslatedTemp)
+                shapeTemp = move((float(command[1]), float(command[2]), float(command[3])), shapeTemp)
 
-                shapeUntranslated.extend(shapeUntranslatedTemp)
+                shape.extend(shapeTemp)
             else:
                 print(f"Unknown commmand \"{command[0]}\"")
         except IndexError:
@@ -271,15 +283,36 @@ dragStart = (0,0)
 psiStart = 0
 phiStart = 0
 
-moving = False
-moveStart = (0,0)
-xStart, yStart, zStart = 0, 0, 0
-
 worldPos = [0, 0, 0]
 
 while True:
+    forward = np.array([
+        -np.cos(psi) * np.sin(phi),
+        np.sin(psi),
+        -np.cos(psi) * np.cos(phi)
+    ])
+
+    right = np.array([
+        np.sin(phi - np.pi/2),
+        0,
+        np.cos(phi - np.pi/2),
+    ])
+
+    if(keyboard.is_pressed("shift")):
+        move_speed = 0.5
+    else:
+        move_speed = 0.2
+
+    if keyboard.is_pressed("w"):
+        cameraPos += forward * move_speed
+    if keyboard.is_pressed("s"):
+        cameraPos -= forward * move_speed
+    if keyboard.is_pressed("a"):
+        cameraPos -= right * move_speed
+    if keyboard.is_pressed("d"):
+        cameraPos += right * move_speed
+
     backspace = False
-    shape = move(worldPos,shapeUntranslated)
     mouseDown = False
     screen.fill(bgColor)
     if(spinning):
@@ -298,16 +331,9 @@ while True:
                 psiStart = psi
             if(event.button == 1):
                 mouseDown = True
-            if(event.button == 2):
-                moving = True
-                moveStart = event.pos
-                xStart = worldPos[0]
-                yStart = worldPos[1]
         if event.type == MOUSEBUTTONUP:
             if(event.button == 3):
                 dragging = False
-            if(event.button == 2):
-                moving = False
 
         if event.type == MOUSEWHEEL:
             if(pointFieldMode):
@@ -319,178 +345,110 @@ while True:
             mouseY = event.pos[1]
             if(dragging):
                 vector = np.subtract(dragStart,event.pos)
-                phi = phiStart - vector[0]/100
-                psi = psiStart - vector[1]/100
-            if(moving):
-                vector = np.subtract(moveStart,event.pos)
-                worldPos[0] = xStart - vector[0]/100
-                worldPos[1] = yStart - vector[1]/100
+                phi = phiStart + vector[0]/100
+                psi = psiStart + vector[1]/100
         elif event.type == pygame.VIDEORESIZE:
                 width, height = event.size
                 screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         if(event.type == KEYDOWN):
             if(event.key == K_BACKSPACE):
                 backspace = True
-    if(not pointFieldMode):
-        rotpoints = []
-        for face in shape:
-            rotface = []
-            for point in face:
-                rotface.append(rot_point_origin(rot_point_origin(point, phi, "y"), psi, "x"))
-            rotpoints.append(rotface)
+    rotpoints = []
+    visibleFaces = []
+    for face in shape:
+        rotface = []
+        behind = True
+        for point in face:
+            camRelative = np.subtract(point, cameraPos)
+            rotX = rot_point_origin(camRelative, -phi, "y")
+            rotY = rot_point_origin(rotX, -psi, "x")
+            rotface.append(rotY)
+            if rotY[2] > 0:
+                behind = False  # At least one point is in front
+        if behind:
+            visibleFaces.append(rotface)
+        rotpoints.append(rotface)
 
-        cameraPos = (0,0,-vd)
-
-        rotpoints2d = []
-        for face in rotpoints:
-            face2d = []
-            for point in face:
-                if(not orthographic):
-                    projected = project_point(point)
-                else:
-                    projected = point
-                face2d.append((projected[0]*scale+width/2, projected[1]*scale+height/2))
-            rotpoints2d.append(face2d)
-        
-        indexesByCloseness = {}
-        for i, face in enumerate(rotpoints):
+    rotpoints2d = []
+    for face in rotpoints:
+        face2d = []
+        for point in face:
+            if(not orthographic):
+                projected = project_point(point)
+            else:
+                projected = point
+            face2d.append((projected[0]*scale+width/2, projected[1]*scale+height/2))
+        rotpoints2d.append(face2d)
+    
+    indexesByCloseness = {}
+    for i, face in enumerate(shape):
+        if(i < len(rotpoints)):
             npFace = np.array(face)
             faceCenter = npFace.mean(axis=0)
             dist = np.linalg.norm(np.subtract(cameraPos,faceCenter))
             indexesByCloseness[str(i)] = dist
 
-        sortedItems = sorted(indexesByCloseness.items(), key=lambda item: item[1], reverse=True)
-        indexesByCloseness = dict(sortedItems)
+    sortedItems = sorted(indexesByCloseness.items(), key=lambda item: item[1], reverse=True)
+    indexesByCloseness = dict(sortedItems)
 
-        selected = False
-        added = False
+    selected = False
+    added = False
 
-        for index in indexesByCloseness.keys():
-            i = int(index)
-            face = rotpoints2d[i]
-            face3d = shape[i]
-            if (fill):
-                if(not randomFill):
-                    pygame.draw.polygon(screen,fgColor,face)
-                else:
-                    normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
-                    pygame.draw.polygon(screen,(abs(normal[0]*255),abs(normal[1]*255),abs(normal[2]*255)),face)
+    for index in indexesByCloseness.keys():
+        i = int(index)
+        face = rotpoints2d[i]
+        face3d = shape[i]
 
-        for index in reversed(indexesByCloseness.keys()):
-            i = int(index)
-            face = rotpoints2d[i]
+        normal = normalize(np.cross(np.subtract(face3d[1], face3d[0]), np.subtract(face3d[2], face3d[0])))
+
+        if (fill and rotpoints[i] in visibleFaces):
+            if(not randomFill):
+                pygame.draw.polygon(screen,fgColor,face)
+            else:
+                pygame.draw.polygon(screen,(abs(normal[0]*255),abs(normal[1]*255),abs(normal[2]*255)),face)
+
+    for index in reversed(indexesByCloseness.keys()):
+        i = int(index)
+        face = rotpoints2d[i]
+        if(rotpoints[i] in visibleFaces):
             if ((point_in_polygon((mouseX,mouseY),face)) and (not selected)):
                 if(backspace):
-                    del shapeUntranslated[i]
+                    del shape[i]
                 try:
                     pygame.draw.polygon(screen, (127,127,255), face.tolist())
                 except AttributeError:
                     pygame.draw.polygon(screen, (127,127,255), face)
             if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown):
-                face3d = np.array(shapeUntranslated[i])
+                face3d = np.array(shape[i])
                 normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
                 faceCenter = face3d.mean(axis=0)
                 newPos = normal*toolDist + faceCenter
-                shapeUntranslated.extend(move((newPos[0],newPos[1],newPos[2]),shapes[tool]))
+                shape.extend(move((newPos[0],newPos[1],newPos[2]),shapes[tool]))
                 added = True
                 play_sound_async("click.mp3")
             if(point_in_polygon((mouseX,mouseY),face)):
                 selected = True
 
-        if(showPoints):
-            for face in rotpoints:
-                for point in face:
-                    if(not orthographic):
-                        projected = project_point(point)
-                    else:
-                        projected = point
-                    pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 3)
-
+    if(showPoints):
         for face in rotpoints:
-            for p1 in face:
-                for p2 in face:
-                    if(not orthographic):
-                        pp1 = project_point(p1)
-                        pp2 = project_point(p2)
-                    else:
-                        pp1 = p1
-                        pp2 = p2
-                    if(not fill):
-                        pygame.draw.line(screen,fgColor, (pp1[0]*scale+width/2,pp1[1]*scale+height/2), (pp2[0]*scale+width/2,pp2[1]*scale+height/2))
-    else:
-        pointField = []
-        for x in range(n):
-            for z in range(n):
-                newX = x/n-0.5
-                newZ = z/n-0.5
-                newFunc = func
-                newFunc = newFunc.replace("y","(sqrt(x**2+z**2))")
-                newFunc = newFunc.replace("x","("+str(newX)+")")
-                newFunc = newFunc.replace("z","("+str(newZ)+")")
-                try:
-                    val = eval(newFunc)
-                except Exception as exc:
-                    val = nan
-                pointField.append((newX,val,newZ))
-        rotpoints = []
-        pointFaces = []
-        for i in range(len(pointField)):
-            rotface = []
-            try:
-                if (i+1) % n != 0:
-                    rotface.append(rot_point_origin(rot_point_origin(pointField[i], phi, "y"), psi, "x"))
-                    rotface.append(rot_point_origin(rot_point_origin(pointField[i+n], phi, "y"), psi, "x"))
-                    rotface.append(rot_point_origin(rot_point_origin(pointField[i+n+1], phi, "y"), psi, "x"))
-                    rotface.append(rot_point_origin(rot_point_origin(pointField[i+1], phi, "y"), psi, "x"))
-                    pointFaces.append([pointField[i],pointField[i+n],pointField[i+n+1],pointField[i+1]])
-                    rotpoints.append(rotface)
-            except IndexError:
-                pass
-
-        if(not orthographic):
-            projectedRotpoints = []
-            for face in rotpoints:
-                projectedFace = []
-                for point in face:
+            for point in face:
+                if(not orthographic):
                     projected = project_point(point)
-                    projectedFace.append((projected[0]*scale+width/2, projected[1]*scale+height/2))
-                projectedRotpoints.append(projectedFace)
-            rotpoints2d = projectedRotpoints
-        else:
-            rotpoints2d = []
-            for face in rotpoints:
-                face2d = []
-                for point in face:
-                    face2d.append((point[0]*scale+width/2,point[1]*scale+height/2))
-                rotpoints2d.append(face2d)
+                else:
+                    projected = point
+                pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 3)
 
-        cameraPos = (0,0,-vd)
-
-        indexesByCloseness = {}
-        for i, face in enumerate(rotpoints):
-            npFace = np.array(face)
-            faceCenter = npFace.mean(axis=0)
-            dist = np.linalg.norm(np.subtract(cameraPos,faceCenter))
-            indexesByCloseness[str(i)] = dist
-
-        sortedItems = sorted(indexesByCloseness.items(), key=lambda item: item[1], reverse=True)
-        indexesByCloseness = dict(sortedItems)
-
-        for index in indexesByCloseness.keys():
-            i = int(index)
-            face = rotpoints2d[i]
-            face3d = rotpoints[i]
-            shapeFace = pointFaces[i]
-            cont = False
-            for point in face3d:
-                for value in point:
-                    if isnan(value):
-                        cont = True
-            if cont: continue
-            normal = normalize(np.cross(np.subtract(shapeFace[1],shapeFace[0]),np.subtract(shapeFace[2],shapeFace[0])))
-
-            pygame.draw.polygon(screen,(abs(normal[0]*255),abs(normal[1]*255),abs(normal[2]*255)), face)
-
+    for face in rotpoints:
+        for p1 in face:
+            for p2 in face:
+                if(not orthographic):
+                    pp1 = project_point(p1)
+                    pp2 = project_point(p2)
+                else:
+                    pp1 = p1
+                    pp2 = p2
+                if(not fill):
+                    pygame.draw.line(screen,fgColor, (pp1[0]*scale+width/2,pp1[1]*scale+height/2), (pp2[0]*scale+width/2,pp2[1]*scale+height/2))
 
     pygame.display.flip()
     fpsClock.tick(fps)
