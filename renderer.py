@@ -116,6 +116,7 @@ fill = False
 randomFill = True
 
 scale = 100
+modelScale = 1
 
 showPoints = True
 
@@ -148,6 +149,8 @@ def move(vector, s):
         newShape.append(newFace)
     return newShape
 
+precomputed_normals = []
+
 def console():
     global fill
     global randomFill
@@ -163,6 +166,8 @@ def console():
     global pointFieldMode
     global func
     global n
+    global modelScale
+    global precomputed_normals
     while True:
         try:
             command = input("> ").split()
@@ -179,6 +184,8 @@ def console():
                     showPoints = not showPoints
                 elif(command[1] == "s"):
                     scale = int(command[2])
+                elif(command[1] == "ms"):
+                    modelScale = float(command[2])
                 elif(command[1] == "o"):
                     orthographic = True
                 elif(command[1] == "p"):
@@ -272,6 +279,7 @@ def console():
                 print(f"Unknown commmand \"{command[0]}\"")
         except IndexError:
             print("Bad amount of parameters")
+        precomputed_normals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
 
 _thread.start_new_thread(console, ())
 
@@ -353,21 +361,42 @@ while True:
         if(event.type == KEYDOWN):
             if(event.key == K_BACKSPACE):
                 backspace = True
-    rotpoints = []
+
+    shape_np = np.array(shape, dtype=float)
+    faces = shape_np.reshape(-1, 3)
+
+    vectors = faces - cameraPos
+
+    cy, sy = np.cos(phi), np.sin(phi)
+    cx, sx = np.cos(-psi), np.sin(-psi)
+
+    R_y = np.array([
+        [ cy, 0, -sy],
+        [  0, 1,   0],
+        [ sy, 0,  cy]
+    ])
+
+    R_x = np.array([
+        [1, 0,  0],
+        [0, cx, -sx],
+        [0, sx,  cx]
+    ])
+
+    R = R_x @ R_y
+
+    rotated = (R @ vectors.T).T
+
+    rotpoints = rotated.reshape(shape_np.shape)
+    
     visibleFaces = []
-    for face in shape:
-        rotface = []
-        behind = True
-        for point in face:
-            camRelative = np.subtract(point, cameraPos)
-            rotX = rot_point_origin(camRelative, -phi, "y")
-            rotY = rot_point_origin(rotX, -psi, "x")
-            rotface.append(rotY)
-            if rotY[2] > 0:
-                behind = False  # At least one point is in front
-        if behind:
-            visibleFaces.append(rotface)
-        rotpoints.append(rotface)
+
+    visibilityMask = []
+    for face in rotpoints:
+        if np.invert((face[:, 2] > 0).any()):  # any vertex in front
+            visibilityMask.append(True)
+        else:
+            visibilityMask.append(False)
+    
 
     rotpoints2d = []
     for face in rotpoints:
@@ -399,9 +428,12 @@ while True:
         face = rotpoints2d[i]
         face3d = shape[i]
 
-        normal = normalize(np.cross(np.subtract(face3d[1], face3d[0]), np.subtract(face3d[2], face3d[0])))
+        try:
+            normal = precomputed_normals[i]
+        except  IndexError:
+            pass
 
-        if (fill and rotpoints[i] in visibleFaces):
+        if (fill and visibilityMask[i]):
             if(not randomFill):
                 pygame.draw.polygon(screen,fgColor,face)
             else:
@@ -410,7 +442,7 @@ while True:
     for index in reversed(indexesByCloseness.keys()):
         i = int(index)
         face = rotpoints2d[i]
-        if(rotpoints[i] in visibleFaces):
+        if(visibilityMask[i]):
             if ((point_in_polygon((mouseX,mouseY),face)) and (not selected)):
                 if(backspace):
                     del shape[i]
@@ -420,12 +452,13 @@ while True:
                     pygame.draw.polygon(screen, (127,127,255), face)
             if(point_in_polygon((mouseX,mouseY),face) and (not added) and mouseDown):
                 face3d = np.array(shape[i])
-                normal = normalize(np.cross(np.subtract(face3d[1],face3d[0]),np.subtract(face3d[2],face3d[0])))
+                normal = precomputed_normals[i]
                 faceCenter = face3d.mean(axis=0)
                 newPos = normal*toolDist + faceCenter
                 shape.extend(move((newPos[0],newPos[1],newPos[2]),shapes[tool]))
                 added = True
                 play_sound_async("click.mp3")
+                precomputed_normals = [normalize(np.cross(np.subtract(face[1],face[0]), np.subtract(face[2],face[0]))) for face in shape]
             if(point_in_polygon((mouseX,mouseY),face)):
                 selected = True
 
@@ -437,17 +470,17 @@ while True:
                 else:
                     projected = point
                 pygame.draw.circle(screen, fgColor, (projected[0]*scale+width/2,projected[1]*scale+height/2), 3)
-
-    for face in rotpoints:
-        for p1 in face:
-            for p2 in face:
-                if(not orthographic):
-                    pp1 = project_point(p1)
-                    pp2 = project_point(p2)
-                else:
-                    pp1 = p1
-                    pp2 = p2
-                if(not fill):
+                
+    if(not fill):
+        for face in rotpoints:
+            for p1 in face:
+                for p2 in face:
+                    if(not orthographic):
+                        pp1 = project_point(p1)
+                        pp2 = project_point(p2)
+                    else:
+                        pp1 = p1
+                        pp2 = p2  
                     pygame.draw.line(screen,fgColor, (pp1[0]*scale+width/2,pp1[1]*scale+height/2), (pp2[0]*scale+width/2,pp2[1]*scale+height/2))
 
     pygame.display.flip()
